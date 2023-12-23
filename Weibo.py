@@ -48,14 +48,14 @@ def get_lda(titles):
         raw = jieba.lcut(t)
         clean = []
         for r in raw:
-            if r not in ["肺炎", "疫情", "新冠", "病毒", " "] and r not in stopset:
+            if r not in ["肺炎", "疫情", "新冠", "病毒", " ", "武汉"] and r not in stopset:
                 clean.append(r)
         common_text.append(clean)
     common_dict = corpora.Dictionary(common_text)
     common_corpus = [common_dict.doc2bow(text) for text in common_text]
     print("building lda")
     lda = gensim.models.LdaModel(
-        corpus=common_corpus, id2word=common_dict, num_topics=10, passes=20
+        corpus=common_corpus, id2word=common_dict, num_topics=20, passes=20
     )
     print("lda done")
     return (lda, common_dict)
@@ -72,7 +72,7 @@ lda, common_dict = get_lda(related["title"].to_list())
 # end_time should be rather useless
 min_st = df["start_time"][0]
 max_st = df["start_time"][df.index.size - 1]
-interval = 6  # day
+interval = 5  # day
 cur_st = min_st
 split_data = []
 while cur_st < max_st:
@@ -111,13 +111,28 @@ def get_count(topic_ind, split):
         if most_relevant_topic[0] == topic_ind:
             topic_docs.append(test_doc)
             topic_hot += split["searchCount"][ind]
-    return len(topic_docs), int((topic_hot * 100) / tot_hot)
+    return len(topic_docs), int((topic_hot * 100) / tot_hot), int(topic_hot / 10000)
 
 
+x_v = [x for x in range(0, len(split_data))]
+y_v = []
 for topic_ind in range(0, len(lda_topics)):
     print(f"Topic {topic_ind}: {lda_topics[topic_ind][1]}")
+    cur_v = []
     for sd in split_data:
-        cnt, hot = get_count(topic_ind, sd)
+        cnt, hot_relative, hot_tot = get_count(topic_ind, sd)
         # print(cnt, int(hot), end="\t")
-        print(hot, end="\t")
+        print(hot_tot, end="\t")
+        cur_v.append(hot_tot)
     print()
+    y_v.append(cur_v)
+
+from line_chart import plot_line_chart
+
+legend = ["dr" + str(x) for x in x_v]
+legends = []
+for i in range(0, len(lda_topics)):
+    legends.append(lda_topics[i][1])
+
+
+plot_line_chart(x_v, y_v, legend_labels=legends)
