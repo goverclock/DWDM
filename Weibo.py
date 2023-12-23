@@ -1,7 +1,17 @@
 #!env python3
 import pandas as pd
+import jieba
+import gensim
 from datetime import datetime as dt
 from datetime import timedelta
+from gensim import corpora
+from gensim.corpora.dictionary import Dictionary
+
+df = pd.read_csv(
+    "data/stopwords.txt", encoding="GBK", header=None, on_bad_lines="skip", sep="\r\n"
+)
+stopwords = df[0].tolist()
+stopset = {w for w in stopwords}
 
 
 # preprocessing, read, rename, dropna
@@ -35,12 +45,17 @@ def get_range(start, end, df):
 def get_lda(titles):
     common_text = []
     for t in titles:
-        common_text.append(jieba.lcut(t))
+        raw = jieba.lcut(t)
+        clean = []
+        for r in raw:
+            if r not in ["肺炎", "疫情", "新冠", "病毒", " "] and r not in stopset:
+                clean.append(r)
+        common_text.append(clean)
     common_dict = corpora.Dictionary(common_text)
     common_corpus = [common_dict.doc2bow(text) for text in common_text]
-    print("lda")
+    print("building lda")
     lda = gensim.models.LdaModel(
-        corpus=common_corpus, id2word=common_dict, num_topics=10, passes=100
+        corpus=common_corpus, id2word=common_dict, num_topics=10, passes=20
     )
     print("lda done")
     return (lda, common_dict)
@@ -52,14 +67,12 @@ df, related = read_data()
 lda, common_dict = get_lda(related["title"].to_list())
 
 # topics
-for topic in lda.show_topics(num_topics=10, num_words=5):
-    print(topic[0], topic[1])
 
 # split data by date range
 # end_time should be rather useless
 min_st = df["start_time"][0]
 max_st = df["start_time"][df.index.size - 1]
-interval = 10  # day
+interval = 6  # day
 cur_st = min_st
 split_data = []
 while cur_st < max_st:
@@ -69,33 +82,42 @@ while cur_st < max_st:
         continue
     split_data.append(ret)
 
-
 # process split data
-lda_topics = lda.show_topics(num_topics=10, num_words=5)
+lda_topics = lda.show_topics(num_topics=-1, num_words=4)
 
-titles = split_data[4]["title"]
-test_text = []
-for t in titles:
-    test_text.append(jieba.lcut(t))
 
-test_corpus = [common_dict.doc2bow(text) for text in test_text]
+# hot for a (topic, data range)
+def get_count(topic_ind, split):
+    tot_hot = 0
+    for sc in split["searchCount"]:
+        tot_hot += sc
 
-test_topic_distribution = lda[test_corpus]
+    test_text_ind = []
+    titles = split["title"]
+    for z in titles.items():
+        test_text_ind.append((z[0], jieba.lcut(z[1])))
+    test_corpus = [common_dict.doc2bow(text[1]) for text in test_text_ind]
+    test_topic_distribution = lda[test_corpus]
 
-topic_ind = 8
-topic_docs = []
-for i, doc_topics in enumerate(test_topic_distribution):
-    test_doc = test_text[i]
-    sorted_topics = sorted(doc_topics, key=lambda x: -x[1])  # sort topics by relevance
-    most_relevant_topic = sorted_topics[0]  # id, relevance
-    if most_relevant_topic[0] == topic_ind:
-        topic_docs.append(test_doc)
-    # print(f"doc={test_doc}, most rt={most_relevant_topic}")
-    # print(f"Document {i} = '{test_doc}'")
-    # for topic, relevance in sorted_topics:
-    #     print(f"Topic {topic}: {relevance:.3f} = {lda_topics[topic][1]}")
+    topic_docs = []
+    topic_hot = 0
+    for i, doc_topics in enumerate(test_topic_distribution):
+        test_doc = test_text_ind[i][1]
+        ind = test_text_ind[i][0]
+        sorted_topics = sorted(
+            doc_topics, key=lambda x: -x[1]
+        )  # sort topics by relevance
+        most_relevant_topic = sorted_topics[0]  # id, relevance
+        if most_relevant_topic[0] == topic_ind:
+            topic_docs.append(test_doc)
+            topic_hot += split["searchCount"][ind]
+    return len(topic_docs), int((topic_hot * 100) / tot_hot)
 
-for t in topic_docs:
-    print(t)
 
-print(lda_topics[topic_ind][1])
+for topic_ind in range(0, len(lda_topics)):
+    print(f"Topic {topic_ind}: {lda_topics[topic_ind][1]}")
+    for sd in split_data:
+        cnt, hot = get_count(topic_ind, sd)
+        # print(cnt, int(hot), end="\t")
+        print(hot, end="\t")
+    print()
