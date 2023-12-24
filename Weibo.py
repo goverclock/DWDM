@@ -55,7 +55,13 @@ def get_lda(titles):
     common_corpus = [common_dict.doc2bow(text) for text in common_text]
     print("building lda")
     lda = gensim.models.LdaModel(
-        corpus=common_corpus, id2word=common_dict, num_topics=20, passes=20
+        eval_every=1,
+        alpha="auto",
+        eta="auto",
+        corpus=common_corpus,
+        id2word=common_dict,
+        num_topics=10,
+        passes=80,
     )
     print("lda done")
     return (lda, common_dict)
@@ -72,8 +78,9 @@ lda, common_dict = get_lda(related["title"].to_list())
 # end_time should be rather useless
 min_st = df["start_time"][0]
 max_st = df["start_time"][df.index.size - 1]
-interval = 5  # day
+interval = 15  # day
 cur_st = min_st
+x_v = []
 split_data = []
 while cur_st < max_st:
     ret = get_range(cur_st, cur_st + timedelta(days=interval), related)
@@ -81,6 +88,7 @@ while cur_st < max_st:
     if ret.index.size == 0:
         continue
     split_data.append(ret)
+    x_v.append(cur_st)
 
 # process split data
 lda_topics = lda.show_topics(num_topics=-1, num_words=4)
@@ -108,13 +116,14 @@ def get_count(topic_ind, split):
             doc_topics, key=lambda x: -x[1]
         )  # sort topics by relevance
         most_relevant_topic = sorted_topics[0]  # id, relevance
-        if most_relevant_topic[0] == topic_ind:
+        relevance = most_relevant_topic[1]
+        if most_relevant_topic[0] == topic_ind and relevance > 0.7:
             topic_docs.append(test_doc)
             topic_hot += split["searchCount"][ind]
     return len(topic_docs), int((topic_hot * 100) / tot_hot), int(topic_hot / 10000)
 
 
-x_v = [x for x in range(0, len(split_data))]
+# x_v = [x for x in range(0, len(split_data))]
 y_v = []
 for topic_ind in range(0, len(lda_topics)):
     print(f"Topic {topic_ind}: {lda_topics[topic_ind][1]}")
@@ -134,5 +143,5 @@ legends = []
 for i in range(0, len(lda_topics)):
     legends.append(lda_topics[i][1])
 
-
+cur_st = min_st
 plot_line_chart(x_v, y_v, legend_labels=legends)

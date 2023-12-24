@@ -28,10 +28,10 @@ def plot_line_chart(
 
     y_min = min(min(y_values) for y_values in y_values_list)
     y_max = max(max(y_values) for y_values in y_values_list)
-    x_min, x_max = min(x_values), max(x_values)
+    # x_min, x_max = min(x_values), max(x_values)
 
     # 设置图表的大小，可以根据需要调整比例
-    plt.xlim(x_min, x_max)
+    # plt.xlim(x_min, x_max)
     plt.ylim(y_min, y_max)
 
     plt.show()
